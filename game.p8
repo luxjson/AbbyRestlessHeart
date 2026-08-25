@@ -1,8 +1,6 @@
 pico-8 cartridge // http://www.pico-8.com
 version 41
 __lua__
--- tomb of g'nir
--- by paranoid cactus
 message = {}
 message.timer = 0
 game_state = 0
