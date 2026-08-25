@@ -3,25 +3,25 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>abbyrestlessheart</string>
+	<string>abby-restless-heart</string>
 	<key>CFBundleGetInfoString</key>
-	<string>abbyrestlessheart</string>
+	<string>abby-restless-heart</string>
 	<key>CFBundleIconFile</key>
-	<string>abbyrestlessheart.icns</string>
+	<string>abby-restless-heart.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.pico8_author.abbyrestlessheart</string>
+	<string>com.pico8_author.abby-restless-heart</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>abbyrestlessheart</string>
+	<string>abby-restless-heart</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>abbyrestlessheart</string>
+	<string>abby-restless-heart</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>abbyrestlessheart</string>
+	<string>abby-restless-heart</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>10.6</string>
 	<key>NSHighResolutionCapable</key>
