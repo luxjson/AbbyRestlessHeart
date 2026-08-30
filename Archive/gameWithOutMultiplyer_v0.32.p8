@@ -4,56 +4,106 @@ __lua__
 -- abby's restless heart
 -- by deadsmile games
 
-message={timer=0}
-game_state,c,control_menu,m,a=0,0,0,false,1
-players,jump_pressed_by_player={},{false,false}
+versao = "v0.32"
 
-tutorial_step,tutorial_pending=0,false
+message = {}
+message.timer = 0
+game_state = 0
+control_scheme = 0 -- 0 = ambos ativos, 1 = só arrows, 2 = só wasd
+control_menu = 0
 
-hours,minutes,seconds,frames=0,0,0,0
+-- tutorial inicial de controles
+tutorial_step = 0
+tutorial_pending = false
 
-camera_pos,l={},1
-camera_limits={
-	{0,0,1152,352},{144,224,516,240},{0,128,1152,240},{0,352,1152,352},{0,0,480,352},{608,0,1152,352}
+hours = 0
+minutes = 0
+seconds = 0
+frames = 0
+
+camera_pos = {}
+camera_limits = {
+	{0,0,1152,352},
+ {144,224,516,240},
+ {0,128,1152,240},
+ {0,352,1152,352},
+ {0,0,480,352},
+ {608,0,1152,352}
 }
-camera_limit=camera_limits[l]
+camera_limit_index = 1
+camera_limit = camera_limits[camera_limit_index]
 
-g,r=0,0
+got_coin_timer = 0
+respawn_timer = 0
 
-gravity=0.4
+gravity = 0.4
+
+------------
+--  init  --
+------------
+
 
 function set_message(text)
-	message.text=text
-	message.timer=120
-	message.w=#text*4-4
-	message.x=64-message.w/2
-	message.y=130
-end function btn_player(btn_id,pidx)
+	message.text = text
+	message.timer = 120
+	message.w = #text*4-4
+	message.x = 64-message.w/2
+	message.y = 130
+end
 
-	if m then if pidx==1 then return btn(btn_id,1) else return btn(btn_id,0) end
-	end
+-- verifica o mesmo comando usando os dois jogadores do PICO-8
+-- player 0 = setas + Z/X (padrao)
+-- player 1 = WASD + SPACE/E (config.txt)
+function btn_mapped(btn_id)
+    local result = false
 
-	result=false
-	if c !=2 then result=result or btn(btn_id,0) end
-	if c !=1 then result=result or btn(btn_id,1) end
-	return result
-end function btnp_player(btn_id,pidx)
-	if m then if pidx==1 then return btnp(btn_id,1) else return btnp(btn_id,0) end
-	end
-	local result=false
-	if c !=2 then result=result or btnp(btn_id,0) end
-	if c !=1 then result=result or btnp(btn_id,1) end
-	return result
-end function btn_mapped(btn_id)
-	return btn_player(btn_id,a)
-end function btnp_mapped(btn_id)
-	return btnp_player(btn_id,a)
-end function _init()
+    -- setas / Z / X
+    if control_scheme != 2 then
+        result = result or btn(btn_id, 0)
+    end
+
+    -- WASD / SPACE / E
+    if control_scheme != 1 then
+        result = result or btn(btn_id, 1)
+    end
+
+    return result
+end
+
+function btnp_mapped(btn_id)
+    local result = false
+
+    -- setas / Z / X
+    if control_scheme != 2 then
+        result = result or btnp(btn_id, 0)
+    end
+
+    -- WASD / SPACE / E
+    if control_scheme != 1 then
+        result = result or btnp(btn_id, 1)
+    end
+
+    return result
+end
+
+
+function _init()
 	init_sprites()
 	init_map()
 	music(10)
 	init_player()
-end function is_solid(x,y) return fget(mget(flr(x/8),flr(y/8)),0) end function is_deadly(x,y)
+end
+
+
+-----------------
+--  collision  --
+-----------------
+
+
+function is_solid(x,y) return fget(mget(flr(x/8),flr(y/8)),0) end
+
+
+function is_deadly(x,y)
 	local mapx=flr(x/8)
 	local mapy=flr(y/8)
 	local spval=mget(mapx,mapy)
@@ -65,1067 +115,1671 @@ end function is_solid(x,y) return fget(mget(flr(x/8),flr(y/8)),0) end function i
 	elseif fget(spval,5) then return distance(x,y,tilex+7,tiley)<4
 	elseif fget(spval,6) then return distance(x,y,tilex,tiley)<4 end
 	return true
-end function update_message()
-	if message.timer > 0 then if message.timer > 60 then local a=min(4-message.timer/30,1)
-			message.y=lerp(lerp(130,112,a),112,a)
+end
+
+
+--------------
+--  update  --
+--------------
+
+
+function update_message()
+	if message.timer > 0 then
+		if message.timer > 60 then
+			local a = min(4-message.timer/30,1)
+			message.y = lerp(lerp(130,112,a),112,a)		
 		else
-			local a=max(0,min(1-message.timer/15,1))
-			message.y=lerp(112,lerp(112,130,a),a)
+			local a = max(0,min(1-message.timer/15,1))
+			message.y = lerp(112,lerp(112,130,a),a)				
 		end
-		message.timer-=1
+		message.timer -= 1
 	end
-end function update_control_tutorial()
-	if not tutorial_pending or game_state !=1 then return end
+end
+
+
+-- Mostra o tutorial somente quando não existe outra mensagem na tela.
+-- Se outra mensagem aparecer, o passo atual fica pendente.
+function update_control_tutorial()
+	if not tutorial_pending or game_state != 1 then return end
 	if message.timer > 0 then return end
 
-	local tut={
-		{"p1: wasd p2: arrows","press WASD or ARROWS to move","press ARROWS to move","press WASD to move"},
-		{"p1: space p2: z to jump","press SPACE or Z to jump","press Z to jump","press SPACE to jump"},
-		{"p1: e p2: x to interact","press E or X to interact","press X to interact","press E to interact"}
-	}
-	local row=tut[tutorial_step]
-	if not row then tutorial_pending=false return end
-	local text=m and row[1] or c==0 and row[2] or c==1 and row[3] or row[4]
+	local text = nil
+	if tutorial_step == 1 then
+		if control_scheme == 0 then text = "press wasd or arrows to move"
+		elseif control_scheme == 1 then text = "press arrows to move"
+		else text = "press wasd to move" end
+	elseif tutorial_step == 2 then
+		if control_scheme == 0 then text = "press space or z to jump"
+		elseif control_scheme == 1 then text = "press z to jump"
+		else text = "press space to jump" end
+	elseif tutorial_step == 3 then
+		if control_scheme == 0 then text = "press e or x to interact"
+		elseif control_scheme == 1 then text = "press x to interact"
+		else text = "press e to interact" end
+	else
+		tutorial_pending = false
+		return
+	end
 
 	set_message(text)
-	tutorial_step+=1
-end function _update()
-	if game_state==0 then if r<0 then r+=1
-			if r==0 then game_state=1
-			for x=0,127 do for y=60,63 do mset(x,y,0) end end
+	tutorial_step += 1
+end
+
+function _update()
+	if game_state==0 then
+		if respawn_timer<0 then
+			respawn_timer+=1
+			if respawn_timer==0 then
+				game_state=1
+				for x=0,127 do for y=60,63 do mset(x,y,0) end end
 			end
 			return
 		end
-		if r<61 then r+=1 return end
-
-		if g < 4 then if btnp_mapped(2) then g=(g-1+4)%4
-			elseif btnp_mapped(3) then g=(g+1)%4
+		if respawn_timer<61 then respawn_timer+=1 return end
+		
+		-- navegação do menu principal (estados 0, 1, 2)
+		if got_coin_timer < 3 then
+			if btnp_mapped(2) then 
+				got_coin_timer=(got_coin_timer-1+3)%3  -- cima
+			elseif btnp_mapped(3) then 
+				got_coin_timer=(got_coin_timer+1)%3  -- baixo
 			end
-			if btnp_mapped(4) then if g==0 then m=false
-			tutorial_step=1
-			tutorial_pending=true
-			r=-12
-			return
-			elseif g==1 then m=true
-			init_player()
-			tutorial_step=1
-			tutorial_pending=true
-			r=-12
-			return
-			elseif g==2 then g=5
-			return
-			elseif g==3 then g=4
-			return
-			end
+			if btnp_mapped(4) then
+				if got_coin_timer==0 then 
+					tutorial_step=1
+					tutorial_pending=true
+					respawn_timer=-12 
+					return
+				elseif got_coin_timer==1 then 
+					got_coin_timer=3 
+					return
+				elseif got_coin_timer==2 then 
+					got_coin_timer=4 
+					return
+				end
 			end
 		end
-
-		if g==5 then if btnp_mapped(5) then g=2 end
+		
+		-- tela de credits (got_coin_timer==3)
+		if got_coin_timer==3 then
+			if btnp_mapped(5) then got_coin_timer=1 end  -- X volta ao menu
 			return
 		end
-
-		if g==4 then if btnp_mapped(2) then control_menu=(control_menu-1+3)%3
-			elseif btnp_mapped(3) then control_menu=(control_menu+1)%3
+		
+		-- submenu de seleção de controles (got_coin_timer==4)
+		if got_coin_timer==4 then
+			if btnp_mapped(2) then 
+				control_menu=(control_menu-1+3)%3  -- cima
+			elseif btnp_mapped(3) then 
+				control_menu=(control_menu+1)%3  -- baixo
 			end
-			if btnp_mapped(4) then c=control_menu
-
-			if c==0 then set_message("both active")
-			elseif c==1 then set_message("arrows only")
-			else
-			set_message("wasd only")
+			if btnp_mapped(4) then 
+				control_scheme=control_menu
+				-- mostra mensagem de confirmação
+				if control_scheme==0 then
+					set_message("both active")
+				elseif control_scheme==1 then
+					set_message("arrows only")
+				else
+					set_message("wasd only")
+				end
+				got_coin_timer=2  -- Z volta ao menu
+				return
 			end
-			g=3
-			return
-			end
-			if btnp_mapped(5) then g=3
+			if btnp_mapped(5) then 
+				got_coin_timer=2  -- X também volta sem salvar
 			end
 			return
 		end
 	end
 
-	for p in all(particles) do p:update()
+	for p in all(particles) do
+ 	p:update()
 	end
-
-	if game_state==1 then frames+=1
-		if frames==30 then frames=0
- 		seconds+=1
- 		if seconds==60 then seconds=0
- 			minutes+=1
- 			if minutes==60 then minutes=0
- 				hours+=1
+	
+	if game_state == 1 then
+		frames += 1
+		if frames == 30 then
+			frames = 0
+ 		seconds += 1
+ 		if seconds == 60 then
+ 			seconds = 0
+ 			minutes += 1
+ 			if minutes == 60 then
+ 				minutes = 0
+ 				hours += 1
  			end
  		end
  	end
-
- 	if game_state==1 then select_player(1) end
-	foreach(platforms,update_platform)
+	
+ 	foreach(platforms,update_platform)
  	foreach(anim_tiles,update_anim_tile)
  	foreach(coins,update_coin)
-
+ 	--foreach(broken_blocks,update_broken_block)
  	foreach(fireballs,update_fireball)
  	foreach(fireball_shooters,update_shooter)
  	foreach(bubbles,update_bubble)
  	foreach(bubble_shooters,update_shooter)
-
- 	if g > 0 then g-=1
- 	elseif r > 0 then r-=1
-
- 		if r<=0 then r=0
+ 	
+	
+ 	if got_coin_timer > 0 then
+ 		got_coin_timer -= 1
+ 	elseif respawn_timer > 0 then
+ 		respawn_timer -= 1
+ 		
+ 		if respawn_timer <=0 then
+ 			respawn_timer = 0
  			init_player()
  		end
  	else
- 		if m then update_player_slot(1)
-			update_player_slot(2)
-		else
- 			select_player(1)
- 			update_input()
- 			move_player()
- 			animate_player()
- 			save_active_player()
- 		end
+ 		update_input()
+  	move_player()
+  	animate_player()
+  end
  end
+ 
+ if game_state == 2 then
+  	update_player_endgame()
+  	for k,v in pairs(fragments) do
+ 	 	v:update()
+  	end
  end
-
- if game_state==2 then update_player_endgame()
- 	for k,v in pairs(fragments) do v:update()
- 	end
- end
-
+ 
  update_message()
  update_control_tutorial()
-
- select_player(1)
- camera_pos.x+=flr((player.x-57-camera_pos.x)*0.25)
- camera_pos.y+=flr((player.y-58-camera_pos.y)*0.25)
+ 
+ camera_pos.x += flr((player.x - 57 - camera_pos.x) * 0.25)
+ camera_pos.y += flr((player.y - 58 - camera_pos.y) * 0.25)
 	camera_pos.x=mid(camera_limit[1],camera_pos.x,camera_limit[3])
 	camera_pos.y=mid(camera_limit[2],camera_pos.y,camera_limit[4])
-end function draw_object(o)
+end
+
+-----------------
+--  rendering  --
+-----------------
+
+
+function draw_object(o)
 	o.sp[o.frame]:draw(o.x,o.y)
-end function draw_message()
-	if message.timer>0 then rectfill(message.x-2,message.y-2,message.x+message.w+4,message.y+6,7)
+end
+
+
+function draw_message()
+	if message.timer>0 then
+		rectfill(message.x-2,message.y-2,message.x+message.w+4,message.y+6,7)
 		rectfill(message.x-3,message.y-1,message.x+message.w+5,message.y+5,7)
 		print(message.text,message.x,message.y,0)
 	end
-end function _draw()
+end
+
+
+function _draw()
 	cls()
-	if game_state==0 then if r<0 then if r%2==0 then cls(8) end
+	if game_state==0 then
+		if respawn_timer<0 then
+			if respawn_timer%2==0 then cls(8) end
 			return
 		end
 		draw_dust()
-		if r<61 then print("\f8deadsmile games\n\f7presents",34,56)
+		if respawn_timer<61 then
+			print("\f8deadsmile games\n\f7presents",34,56)
 			return
 		end
-		if g==5 then print("\f8credits\n\f7game design\n\f8lucas eduardo\n\f7programming\n\f8lucas eduardo\n\f7art/music/sfx\n\f8lucas eduardo\n\f7level design/testing\n\f8lucas eduardo\n\f7x to return",24,22)
+		if got_coin_timer==3 then
+			print("\f8credits\n\f7game design\n\f8lucas eduardo\n\f7programming\n\f8lucas eduardo\n\f7art / music / sfx\n\f8lucas eduardo\n\f7level design / testing\n\f8lucas eduardo\n\f7x to return",24,22)
 			return
 		end
-		if g==4 then local c1,c2,c3=5,5,5
-			if control_menu==0 then c1=7
-			elseif control_menu==1 then c2=7
-			else c3=7 end
+		if got_coin_timer==4 then
+			local c1,c2,c3=7,5,5
+			if control_menu==0 then c1,c2,c3=7,5,5 
+			elseif control_menu==1 then c1,c2,c3=5,7,5 
+			else c1,c2,c3=5,5,7 end
 			print("\f8controls",40,28)
 			print("both active",32,44,c1)
 			print("arrows only",32,52,c2)
 			print("wasd only",32,60,c3)
-			print("⬆️⬇️❎ / WASD",42,74,6)
+			print("⬆️⬇️❎ / ❌",42,74,6)
 			return
 		end
-		print("abby's",50,34,6)
-		print("restless heart",34,44,7)
-		local s1,s2,s3,s4=5,5,5,5
-		if g==0 then s1=7
-		elseif g==1 then s2=7
-		elseif g==2 then s3=7
-		else s4=7 end
-		print("new game",48,78,s1)
-		print("multiplayer",42,86,s2)
-		print("credits",50,94,s3)
-		print("controls",48,102,s4)
+		print("abby's",50,42,6)
+		print("restless heart",34,52,7)
+		local s1,s2,s3=5,7,7
+		if got_coin_timer==0 then s1,s2,s3=7,5,5 
+		elseif got_coin_timer==1 then s1,s2,s3=5,7,5 
+		else s1,s2,s3=5,5,7 end
+		print("new game",48,88,s1)
+		print("credits",50,96,s2)
+		print("controls",48,104,s3)
 		print("⬆️⬇️❎",54,114,6)
-		print("v0.31",2,122,5)
+    	print(versao, 127 - (#versao * 4), 122, 5)
 		return
 	end
 	camera(camera_pos.x,camera_pos.y)
 
+	-- render map
 	map(0,0,0,0,128,128)
-	foreach(triggers,draw_object)
-	foreach(platforms,draw_object)
-	foreach(coins,draw_object)
-	for p in all(particles) do p:draw()
+	foreach(triggers, draw_object)
+	foreach(platforms, draw_object)
+	foreach(coins, draw_object)
+	for p in all(particles) do
+		p:draw()
 	end
-	foreach(fireballs,draw_object)
-	foreach(bubbles,draw_object)
-
-	local function draw_current_player(pidx,invert)
-		local pp=players[pidx]
-		if not pp or r>0 then return end
-		if invert then for c=1,15 do pal(c,15-c,1) end
-		end
-		spr(pp.frame,pp.x,pp.y,1,1,pp.face_l,false)
-		if g > 0 then local a=min(1-((g-15)/15),1)
-			a=lerp(lerp(0,1,a),1,a)
-			local cy=lerp(pp.y,pp.y-12,a)
-			local cf=flr(lerp(1,#sp_coin1+1,a))
-			if cf > #sp_coin1 then cf=1 end
-			draw_sprite(sp_coin1[cf],pp.x,cy)
-		end
-		pal()
+	foreach(fireballs, draw_object)
+	foreach(bubbles, draw_object)
+	
+	-- render player
+	if respawn_timer <= 0 then
+		if got_coin_timer > 0 then
+			local a=min(1-((got_coin_timer-15)/15),1)
+		 a = lerp(lerp(0,1,a),1,a)
+		 local coiny = lerp(player.y,player.y-12,a)
+			spr(12,player.x,player.y,1,1,false,false)
+			local cf = flr(lerp(1,#sp_coin1+1,a))
+			if cf > #sp_coin1 then
+				cf = 1
+			end
+			draw_sprite(sp_coin1[cf],player.x,coiny)
+		else
+  	spr(player.frame,player.x,player.y,1,1,player.face_l,false)
+  	if player.bubble != nil then
+  		local i = 1
+  		if btn(0) then
+  			i += 1
+  		end
+  		if btn(1) then
+  			i += 4
+  		end
+  		if btn(2) then
+  			i += 2
+  		end
+  		if btn(3) then
+  			i += 8
+  		end
+  		draw_sprite(sp_arrows[i],player.x,player.y)
+  	end
+  end
 	end
-	draw_current_player(1,false)
-	if m then draw_current_player(2,true) end
-	for k,v in pairs(fragments) do v:draw()
+	
+	for k,v in pairs(fragments) do
+		v:draw()
 	end
-
+	
 	camera(0,0)
 	draw_dust()
-
-	if game_state==2 then if end_timer > 200 then print("victory!",48,28,10)
- 		local secs_str=sub("0"..seconds,-2)
- 		local mins_str=sub("0"..minutes,-2)
- 		local s="time: "..hours..":"..mins_str..":"..secs_str.."."..flr(100/frames)
- 		local x=64-(#s*4)/2
+	
+	--rectfill(1,1,17,10,0)
+	--rect(1,1,17,10,7)
+	--spr(85,3,2)
+	--print(score,12,4,7)
+	
+	if game_state == 2 then
+ 	if end_timer > 200 then
+ 		print("victory!",48,28,10)
+ 		local secs_str = ""..seconds
+ 		local mins_str = ""..minutes
+ 		if seconds < 10 then
+ 			secs_str = "0"..seconds
+ 		end
+ 		if minutes < 10 then
+ 			mins_str = "0"..minutes
+ 		end
+ 		local s = "time: "..hours..":"..mins_str..":"..secs_str.."."..flr(100/frames)
+ 		local x = 64-(#s*4)/2
  		print(s,x,46,6)
- 		s="death toll: "..deaths
- 		x=64-(#s*4)/2
+ 		s = "death toll: "..deaths
+ 		x = 64-(#s*4)/2
  		print(s,x,38,6)
  	end
  end
-
-	draw_message()
+	
+-- 	local dr = 126
+-- 	local dw = 16
+	
+-- 	if deaths >= 10 then
+-- 		dw += 4
+-- 		if deaths >= 100 then
+-- 			dw += 4
+-- 			if deaths >= 1000 then
+--  			dw += 4
+--  			if deaths >= 10000 then
+--   			dw += 4
+--  		end
+--  	end
+-- 	end
+-- end
+	
+-- rectfill(dr-dw,1,dr,10,0)
+-- 	rect(dr-dw,1,dr,10,7)
+-- 	spr(3,dr-dw+2,2)
+-- 	print(deaths,dr-dw+11,4,7)
+	
+	
+--print(camera_limit[1]..","..camera_limit[2],0,120,7)
+	
+draw_message()
 end
 -->8
-sp_coin1,sp_coin2,sp_fire_l,sp_fire_r,sp_fire_u,sp_fire_d,sp_bubble,sp_trigger,sp_plat1x3,sp_plat3x1,sp_plat1x4,sp_plat2x3,sp_plat2x1,sp_arrows={},{},{},{},{},{},{},{},{},{},{},{},{},{}
+-- sprites
+sp_coin1 = {}
+sp_coin2 = {}
+sp_fire_l = {}
+sp_fire_r = {}
+sp_fire_u = {}
+sp_fire_d = {}
+sp_bubble = {}
+sp_trigger = {}
+sp_plat1x3 = {}
+sp_plat3x1 = {}
+--sp_plat4x1 = {}
+sp_plat1x4 = {}
+--sp_plat2x2 = {}
+sp_plat2x3 = {}
+sp_plat2x1 = {}
+sp_arrows = {}
 
 function new_sprite_list(list,indices,flipx_list)
-	local flipx_i=1
-	local flipx_count=flipx_list==nil and 0 or #flipx_list
-	for k,v in pairs(indices) do local flipx=false
-		if flipx_i<=flipx_count then if flipx_list[flipx_i]==k then flipx=true
-			flipx_i+=1
+	local flipx_i = 1
+	local flipx_count = flipx_list == nil and 0 or #flipx_list
+	for k,v in pairs(indices) do
+		local flipx = false
+		if flipx_i <= flipx_count then
+			if flipx_list[flipx_i] == k then
+				flipx = true
+				flipx_i += 1
 			end
 		end
 		add(list,new_sprite_8x8(v,flipx,false))
 	end
-end function new_sprite_8x8(index,flipx,flipy)
-	return new_sprite((index%16)*8,flr(index/16)*8,8,8,flipx,flipy,0,0)
-end function new_sprite_8tile(index,offsetx,offsety)
-	return new_sprite((index%16)*8,flr(index/16)*8,8,8,false,false,offsetx,offsety)
-end function new_sprite(x,y,w,h,flipx,flipy,offsetx,offsety)
-	s={
+end
 
-		x=x,y=y,w=w,h=h,flipx=flipx,flipy=flipy,offsetx=offsetx,offsety=offsety,draw=draw_sprite
+
+function new_sprite_8x8(index,flipx,flipy)
+	return new_sprite((index%16)*8,flr(index/16)*8,8,8,flipx,flipy,0,0)
+end
+
+
+function new_sprite_8tile(index,offsetx,offsety)
+	return new_sprite((index%16)*8,flr(index/16)*8,8,8,false,false,offsetx,offsety)
+end
+
+
+function new_sprite(x,y,w,h,flipx,flipy,offsetx,offsety)
+	s = {
+		--["type"] = 0,
+		x = x,
+		y = y,
+		w = w,
+		h = h,
+		flipx = flipx,
+		flipy = flipy,
+		offsetx = offsetx,
+		offsety = offsety,
+		draw = draw_sprite
 	}
 	return s
-end function new_tile_sprite(sp_list,w,h)
-	s={
+end
 
-		sp=sp_list,w=w,h=h
+
+function new_tile_sprite(sp_list,w,h)
+	s = {
+		--["type"] = 1,
+		sp = sp_list,
+		w = w,
+		h = h
 	}
-	s.draw=function(self,x,y)
-		for sp in all(self.sp) do draw_sprite(sp,x,y)
+	s.draw = function(self,x,y)
+		for sp in all(self.sp) do
+			draw_sprite(sp,x,y)
 		end
 	end
 	return s
-end function init_sprites()
+end
 
+
+function init_sprites()
+ -- up
 	add(sp_arrows,new_sprite(64,20,5,4,false,false,1,-6))
-
+	-- left
 	add(sp_arrows,new_sprite(100,13,4,5,false,false,-7,2))
-
+	-- up
 	add(sp_arrows,new_sprite(64,20,5,4,false,false,1,-6))
-
+	-- up left
 	add(sp_arrows,new_sprite(69,20,4,4,false,false,-4,-4))
-
+	-- right
 	for i=1,2 do add(sp_arrows,new_sprite(100,13,4,5,true,false,11,2)) end
-
+	-- up right
 	for i=1,2 do add(sp_arrows,new_sprite(69,20,4,4,true,false,9,-4)) end
-
-	for i=1,2 do add(sp_arrows,new_sprite(64,20,5,4,false,true,1,11))
+	-- down
+	for i=1,2 do
+		add(sp_arrows,new_sprite(64,20,5,4,false,true,1,11))
 		add(sp_arrows,new_sprite(69,20,4,4,false,true,-5,9))
 	end
-
+	-- down right
 	for i=1,4 do add(sp_arrows,new_sprite(69,20,4,4,true,true,9,9)) end
 
 	new_sprite_list(sp_coin1,{85,85,85,86,86,87,87,88,88,85,85,85,89,89,88,88,90,90},{10,11,12})
 	new_sprite_list(sp_coin2,{69,69,69,91,91,87,87,93,93,69,69,69,94,94,92,92,95,95},{10,11,12})
-
-	for i=1,4 do local i1,i2,f=36+(i-1)%2,38+(i-1)%2,i>2
+	
+	for i=1,4 do
+		local i1,i2,f=36+(i-1)%2,38+(i-1)%2,i>2
 		add(sp_fire_l,new_sprite_8x8(i1,true,f))
 		add(sp_fire_r,new_sprite_8x8(i1,false,f))
 		add(sp_fire_u,new_sprite_8x8(i2,f,false))
 		add(sp_fire_d,new_sprite_8x8(i2,f,true))
 	end
-
-	local sp1=new_sprite(64,8,12,12,false,false,-2,-2)
-	local sp2=new_sprite(76,8,10,12,false,false,-1,-2)
-	local sp3=new_sprite(86,8,12,12,false,false,-2,-2)
-	for s in all({sp1,sp2,sp1,sp3}) do add(sp_bubble,s)
-		add(sp_bubble,s)
-	end
+	
+	local sp1 = new_sprite(64,8,12,12,false,false,-2,-2)
+	local sp2 = new_sprite(76,8,10,12,false,false,-1,-2)
+	local sp3 = new_sprite(86,8,12,12,false,false,-2,-2)
+	for i=1,2 do add(sp_bubble,sp1) end
+	for i=1,2 do add(sp_bubble,sp2) end
+	for i=1,2 do add(sp_bubble,sp1) end
+	for i=1,2 do add(sp_bubble,sp3) end
 
 	add(sp_trigger,new_sprite(98,8,6,5,false,false,0,3))
 	add(sp_trigger,new_sprite(98,8,6,5,true,false,2,3))
-
+	
 	add(sp_plat1x3,new_tile_sprite({new_sprite_8tile(15,0,0),new_sprite_8tile(31,0,8),new_sprite_8tile(47,0,16)},8,24))
 	add(sp_plat3x1,new_tile_sprite({new_sprite_8tile(61,0,0),new_sprite_8tile(62,8,0),new_sprite_8tile(63,16,0)},24,8))
-
+	--add(sp_plat4x1,new_tile_sprite({new_sprite_8tile(61,0,0),new_sprite_8tile(62,8,0),new_sprite_8tile(62,16,0),new_sprite_8tile(63,24,0)},24,8))
 	add(sp_plat2x1,new_tile_sprite({new_sprite_8tile(61,0,0),new_sprite_8tile(63,8,0)},16,8))
 	add(sp_plat1x4,new_tile_sprite({new_sprite_8tile(15,0,0),new_sprite_8tile(31,0,8),new_sprite_8tile(31,0,16),new_sprite_8tile(47,0,24)},8,32))
-
+	--add(sp_plat2x2,new_tile_sprite({new_sprite_8tile(13,0,0),new_sprite_8tile(45,0,8),new_sprite_8tile(14,8,0),new_sprite_8tile(46,8,8)},16,16))
 	add(sp_plat2x3,new_tile_sprite({new_sprite_8tile(13,0,0),new_sprite_8tile(29,0,8),new_sprite_8tile(45,0,16),new_sprite_8tile(14,8,0),new_sprite_8tile(30,8,8),new_sprite_8tile(46,8,16)},16,24))
-end function draw_sprite(self,x,y,flipx,flipy)
-		if flipx then flipx=not self.flipx
+end
+
+
+function draw_sprite(self,x,y,flipx,flipy)
+		if flipx then
+			flipx = not self.flipx
 		else
-			flipx=self.flipx
+			flipx = self.flipx
 		end
-		if flipy then flipy=not self.flipy
+		if flipy then
+			flipy = not self.flipy
 		else
-			flipy=self.flipy
+			flipy = self.flipy
 		end
 		sspr(self.x,self.y,self.w,self.h,x+self.offsetx,y+self.offsety,self.w,self.h,flipx,flipy)
-end function lerp(x,y,a)
+end
+-->8
+-- helpers
+
+function lerp(x,y,a)
 	return x+(y-x)*a
-end function smooth_lerp(x,y,a)
+end
+
+
+function smooth_lerp(x,y,a)
 	return lerp(x,y,a*a*(3-2*a))
-end function distance(x1,y1,x2,y2)
- local xd,yd=abs(x1-x2),abs(y1-y2)
-	local dsq=xd*xd+yd*yd
+end
 
-	if dsq > 0 then return sqrt(dsq)
-	elseif dsq==0 then return 0
+
+function distance(x1,y1,x2,y2)
+ local xd = abs(x1 - x2)
+	local yd = abs(y1 - y2)
+	local dsq = xd * xd + yd * yd
+	
+	-- the dsq calc can easily overflow
+	if dsq > 0 then
+		return sqrt(dsq)
+	elseif dsq == 0 then
+		return 0
 	end
-
+	
 	return 32761
-end function rect_intersect(l1,t1,r1,b1,l2,t2,r2,b2)
+end
+
+
+function rect_intersect(l1,t1,r1,b1,l2,t2,r2,b2)
 	return not (r1 < l2 or b1 < t2 or l1 > r2 or t1 > b2)
-end function clamp(v,x,y)
-	if v < x then return x
-	elseif v > y then return y
+end
+
+
+function clamp(v,x,y)
+	if v < x then
+		return x
+	elseif v > y then
+		return y
 	end
 	return v
-end function rect_circ_intersect(circx,circy,circr,rectl,rectt,rectr,rectb)
+end
 
+
+function rect_circ_intersect(circx,circy,circr,rectl,rectt,rectr,rectb)
+	-- workaround to avoid overflow during distance calc
 	if circx+circr < rectl
 		or circx-circr > rectr
 		or circy+circr < rectt
-		or circy-circr > rectb then return false
+		or circy-circr > rectb then
+		return false
 	end
-
-	if distance(clamp(circx,rectl,rectr),clamp(circy,rectt,rectb),circx,circy) < circr then return true
+	
+	if distance(clamp(circx,rectl,rectr),clamp(circy,rectt,rectb),circx,circy) < circr then
+		return true
 	end
-
+	
 	return false
 end
 -->8
-player_spawn,player={x=88,y=88},{}
+-- player
 
-accel,speedx_max,jump_speed=0.8,2.25,4.75
+player_spawn = {x = 88, y = 88}
+player = {}
 
-score,deaths=0,0
+jump_pressed = false
 
-function make_player(x,y)
-	return {
-		x=x,y=y,xv=0,yv=0,face_l=true,frame=1,frame_delay=2,on_ground=false,was_ground=false,on_wall=false,wall_side=0,platform=nil,bubble=nil,fly_timer=0,aircontrol_timer=0,no_bubble_timer=0
+accel = 0.8
+speedx_max = 2.25
+jump_speed = 4.75
+
+score = 0
+deaths = 0
+
+function init_player()
+	player = {
+		x = player_spawn.x,
+		y = player_spawn.y,
+		xv = 0,
+		yv = 0,
+		face_l = true,
+		frame = 1,
+		frame_delay = 2,
+		on_ground = false,
+		was_ground = false,
+		on_wall = false,
+		wall_side = 0,
+		platform = nil,
+		bubble = nil,
+		fly_timer = 0,
+		aircontrol_timer = 0,
+		no_bubble_timer = 0
 	}
-end function init_player()
-	players[1]=make_player(player_spawn.x,player_spawn.y)
-	players[2]=make_player(player_spawn.x+24,player_spawn.y)
-	a=1
-	player=players[1]
-	camera_pos.x=player.x-64
-	camera_pos.y=player.y-64
-	jump_pressed_by_player={false,false}
-	jump_pressed=false
-end function select_player(pidx)
-	a=pidx
-	player=players[pidx]
-	jump_pressed=jump_pressed_by_player[pidx]
-end function save_active_player()
-	players[a]=player
-	jump_pressed_by_player[a]=jump_pressed
-end function kill_player()
-	r=30
-	add_particle_burst(player.x+4,player.y+4,player.xv*0.25,player.yv*0.25,20,7,20)
-	sfx(3)
-	deaths+=1
+ camera_pos.x = player.x-64
+ camera_pos.y = player.y-64
+ 
+ jump_pressed = false
 end
 
-end_frames,end_timer,end_frame={16,17,18,19,12},0,1
+
+function kill_player()
+	respawn_timer = 30
+	add_particle_burst(player.x+4,player.y+4,player.xv*0.25,player.yv*0.25,20,7,20)
+	sfx(3)
+	deaths += 1
+end
+
+end_frames = {16,17,18,19,12}
+end_timer = 0
+end_frame = 1
 
 function update_player_endgame()
-	player.face_l=false
-	if player.on_ground then if player.x < 936 then player.xv=1
+	jump_pressed = false
+	player.face_l = false
+	if player.on_ground then
+		if player.x < 936 then
+			player.xv = 1
 		else
-			player.xv=0
-			player.frame=8
-			if end_timer > 20 then player.frame=end_frames[end_frame]
-			if end_timer%4==0 then end_frame+=1
+			player.xv = 0
+			player.frame = 8
+			if end_timer > 20 then
+				player.frame = end_frames[end_frame]
+				if end_timer%4 == 0 then
+					end_frame += 1
+				end
+				if end_frame > 5 then
+					end_frame = 5
+				end
+				if end_timer == 40 then
+					new_fragment(0.25,sp_coin1,false,false,933,81)
+					new_fragment(0.5,sp_coin2,true,false,939,81)
+					new_fragment(0.75,sp_coin1,true,true,939,87)
+					new_fragment(0,sp_coin2,false,true,933,87)
+					sfx(10)
+				elseif end_timer == 183
+					or end_timer == 186
+					or end_timer == 189
+					or end_timer == 192
+					or end_timer == 195 then
+					for x=0,40 do
+						local xv = sin(x/40)
+						local yv = cos(x/40)
+    		add_particle(940+xv*6,87.5+yv*6,xv*2,yv*2,10,20+flr(rnd(10)),1.5,0,1)
+    	end
+    	sfx(11)
+				elseif end_timer > 196 then
+					local t = end_timer%3
+    	if t == 0 then
+    		spawn_magic_bubble(9)
+    	elseif t == 1 then
+    		spawn_magic_bubble(10)
+    	elseif t == 2 then
+    		spawn_magic_bubble(7)
+    	end
+				end
 			end
-			if end_frame > 5 then end_frame=5
-			end
-			if end_timer==40 then new_fragment(0.25,sp_coin1,false,false,933,81)
-			new_fragment(0.5,sp_coin2,true,false,939,81)
-			new_fragment(0.75,sp_coin1,true,true,939,87)
-			new_fragment(0,sp_coin2,false,true,933,87)
-			sfx(10)
-			elseif end_timer==183
-			or end_timer==186
-			or end_timer==189
-			or end_timer==192
-			or end_timer==195 then for x=0,40 do local xv=sin(x/40)
-			local yv=cos(x/40)
- 		add_particle(940+xv*6,87.5+yv*6,xv*2,yv*2,10,20+flr(rnd(10)),1.5,0,1)
- 	end
- 	sfx(11)
-			elseif end_timer > 196 then local t=end_timer%3
- 	if t==0 then spawn_magic_bubble(9)
- 	elseif t==1 then spawn_magic_bubble(10)
- 	elseif t==2 then spawn_magic_bubble(7)
- 	end
-			end
-			end
-
-			end_timer+=1
+			-- end sequence
+			end_timer += 1
 		end
 	end
-
+	
 	move_player()
-
-	if end_timer==0 then animate_player()
+	
+	if end_timer == 0 then
+		animate_player()
 	end
-end function update_player_slot(pidx)
-	select_player(pidx)
-	update_input()
-	move_player()
-	animate_player()
-	save_active_player()
-end function update_input()
-	if player.bubble !=nil then if btn_mapped(4) then if not jump_pressed then player.xv=0
-			player.yv=0
-			if btn_mapped(0) then player.xv=-1
-			end
-			if btn_mapped(1) then player.xv=1
-			end
-			if btn_mapped(2) then player.yv=-1
-			end
-			if btn_mapped(3) then player.yv=1
-			end
-			local d=distance(player.xv,player.yv,0,0)
-			if d !=0 then player.xv=player.xv/d*jump_speed
-			player.yv=player.yv/d*jump_speed
-			else
-			player.yv=-jump_speed
-			end
-			jump_pressed=true
-			sfx(9)
-			player.fly_timer=6
-			player.aircontrol_timer=6
-			player.no_bubble_timer=4
-			player.bubble=nil
+end
+
+
+function update_input()
+	if player.bubble != nil then
+		if btn_mapped(4) then
+			if not jump_pressed then
+				player.xv = 0
+				player.yv = 0
+				if btn_mapped(0) then
+					player.xv = -1
+				end
+				if btn_mapped(1) then
+					player.xv = 1
+				end
+				if btn_mapped(2) then
+					player.yv = -1
+				end
+				if btn_mapped(3) then
+					player.yv = 1
+				end
+				local d = distance(player.xv,player.yv,0,0)
+				if d != 0 then
+					player.xv = player.xv / d * jump_speed
+					player.yv = player.yv / d * jump_speed
+				else
+					player.yv = -jump_speed
+				end
+				jump_pressed = true
+				sfx(9)
+				player.fly_timer = 6
+				player.aircontrol_timer = 6
+				player.no_bubble_timer = 4
+				player.bubble = nil
 			end
 		end
 	else
-		if player.fly_timer<=0 then if btn_mapped(0) then if player.on_ground then player.xv-=accel
-			player.face_l=true
-			elseif player.aircontrol_timer<=0 then player.xv-=accel/2.1
-			player.face_l=true
+		if player.fly_timer <= 0 then
+			if btn_mapped(0) then
+				-- move left
+				if player.on_ground then
+					player.xv -= accel
+					player.face_l = true
+				elseif player.aircontrol_timer <= 0 then
+					player.xv -= accel/2.1
+					player.face_l = true
+				end
+			elseif btn_mapped(1) then
+				-- move right
+				if player.on_ground then
+					player.xv += accel
+					player.face_l = false
+				elseif player.aircontrol_timer <= 0 then
+					player.xv += accel/2.1
+					player.face_l = false
+				end
+			elseif player.on_ground then
+				-- not trying to move so slow down
+				if player.xv > 0 then
+					player.xv -= accel
+					if player.xv < 0 then
+						player.xv = 0
+					end
+				elseif player.xv < 0 then
+					player.xv += accel
+					if player.xv > 0 then
+						player.xv = 0
+					end
+				end
 			end
-			elseif btn_mapped(1) then if player.on_ground then player.xv+=accel
-			player.face_l=false
-			elseif player.aircontrol_timer<=0 then player.xv+=accel/2.1
-			player.face_l=false
-			end
-			elseif player.on_ground then if player.xv > 0 then player.xv-=accel
-			if player.xv < 0 then player.xv=0
-			end
-			elseif player.xv < 0 then player.xv+=accel
-			if player.xv > 0 then player.xv=0
-			end
-			end
-			end
-			if player.xv <-speedx_max then player.xv=-speedx_max
-			elseif player.xv > speedx_max then player.xv=speedx_max
+			if player.xv < -speedx_max then
+				player.xv = -speedx_max
+			elseif player.xv > speedx_max then
+				player.xv = speedx_max
 			end
 		end
-
-		if btn_mapped(4) then if (player.on_ground or player.on_wall) and not jump_pressed then player.yv=-jump_speed
-			if player.platform !=nil then player.xv+=player.platform.xv
-			player.platform=nil
-			end
-			jump_pressed=true
-			sfx(0)
-			if player.on_wall then player.aircontrol_timer=6
-			player.xv=speedx_max*player.wall_side
-			if player.wall_side > 0 then player.face_l=false
-			elseif player.wall_side < 0 then player.face_l=true
-			end
-			end
+		
+		if btn_mapped(4) then
+			if (player.on_ground or player.on_wall) and not jump_pressed then
+				player.yv = -jump_speed
+				if player.platform != nil then
+					--player.yv += player.platform.yv
+					player.xv += player.platform.xv
+					player.platform = nil
+				end
+				jump_pressed = true
+				sfx(0)
+				if player.on_wall then
+					player.aircontrol_timer = 6
+					player.xv = speedx_max * player.wall_side
+					if player.wall_side > 0 then
+						player.face_l = false
+					elseif player.wall_side < 0 then
+						player.face_l = true
+					end
+				end
 			end
 		end
  end
-
-	if btnp_mapped(5) then for t in all(triggers) do if t.on==0
-			and rect_intersect(player.x,player.y,player.x+8,player.y+8,t.x,t.y,t.x+8,t.y+8) then t:activate()
-			sfx(2)
-			break
+	
+	if btnp_mapped(5) then
+		for t in all(triggers) do
+			if t.on == 0 
+				and rect_intersect(player.x,player.y,player.x+8,player.y+8,t.x,t.y,t.x+8,t.y+8) then
+				t:activate()
+				sfx(2)
+				break
 			end
 		end
 	end
-
- if not btn_mapped(4) then jump_pressed=false
+	
+ if not btn_mapped(4) then
+ 	jump_pressed = false
  end
-end function move_player()
-	player.was_ground=player.on_ground
-	player.on_ground=false
-	player.on_wall=false
-	player.wall_side=0
+end
 
-	if player.fly_timer > 0 then if player.fly_timer%2==0 then add_particle(player.x+3,player.y+3,0,0,12,20,2,0,1)
+
+function move_player()
+	player.was_ground = player.on_ground
+	player.on_ground = false
+	player.on_wall = false
+	player.wall_side = 0
+	
+	if player.fly_timer > 0 then
+		if player.fly_timer%2 == 0 then
+			add_particle(player.x+3,player.y+3,0,0,12,20,2,0,1)
 		else
 			add_particle(player.x+3,player.y+3,0,0,1,20,2,0,1)
 		end
-		player.fly_timer-=1
+		player.fly_timer -= 1
 	end
-	if player.aircontrol_timer > 0 then player.aircontrol_timer-=1
+	if player.aircontrol_timer > 0 then
+		player.aircontrol_timer -= 1
 	end
-	if player.no_bubble_timer > 0 then player.no_bubble_timer-=1
+	if player.no_bubble_timer > 0 then
+		player.no_bubble_timer -= 1
 	end
-
-	if player.platform !=nil then if not rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8+player.platform.yv,player.platform.x,player.platform.y,player.platform.x+player.platform.w,player.platform.y+player.platform.h) then player.platform=nil
+	 
+	if player.platform != nil then
+		if not rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8+player.platform.yv,player.platform.x,player.platform.y,player.platform.x+player.platform.w,player.platform.y+player.platform.h) then
+			player.platform = nil
 		else
-			player.on_ground=true
+			player.on_ground = true
 		end
 	end
 
-	if player.platform !=nil then player.x+=player.platform.xv
-		player.y+=player.platform.yv
-	elseif player.bubble !=nil then player.x+=player.bubble.xv
-		player.y+=player.bubble.yv
-	elseif player.fly_timer<=0 then player.yv+=gravity
+	if player.platform != nil then
+		player.x += player.platform.xv
+		player.y += player.platform.yv
+	elseif player.bubble != nil then
+		player.x += player.bubble.xv
+		player.y += player.bubble.yv
+	elseif player.fly_timer <= 0 then
+		player.yv += gravity	
+	end
+	
+	if player.yv > 7 then
+		player.yv = 7
+	end
+	
+	if is_solid(player.x, player.y + player.yv + 8)
+		or is_solid(player.x + 7, player.y + player.yv + 8) then
+		player.y = (flr((player.y + player.yv) / 8) * 8)
+		player.yv = 0
+		player.on_ground = true
 	end
 
-	if player.yv > 7 then player.yv=7
+	if is_solid(player.x + player.xv + 8, player.y)
+		or is_solid(player.x + player.xv + 8, player.y + 7) then
+		player.x = (flr((player.x + player.xv) / 8) * 8)
+		player.xv = 0
 	end
 
-	if is_solid(player.x,player.y+player.yv+8)
-		or is_solid(player.x+7,player.y+player.yv+8) then player.y=(flr((player.y+player.yv)/8)*8)
-		player.yv=0
-		player.on_ground=true
+	if is_solid(player.x + player.xv, player.y)
+		or is_solid(player.x + player.xv, player.y + 7) then
+		player.x = (flr((player.x + player.xv + 8) / 8) * 8)
+		player.xv = 0
 	end
-
-	if is_solid(player.x+player.xv+8,player.y)
-		or is_solid(player.x+player.xv+8,player.y+7) then player.x=(flr((player.x+player.xv)/8)*8)
-		player.xv=0
-	end
-
-	if is_solid(player.x+player.xv,player.y)
-		or is_solid(player.x+player.xv,player.y+7) then player.x=(flr((player.x+player.xv+8)/8)*8)
-		player.xv=0
-	end
-
-	if is_solid(player.x,player.y+player.yv)
-		or is_solid(player.x+7,player.y+player.yv) then player.y=(flr((player.y+player.yv+8)/8)*8)
-		player.yv=0
-	end
-
-	for p in all(platforms) do if rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+8,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then if player.x+8<=p.x-p.xv then if rect_intersect(player.x+player.xv,player.y+player.yv+1,player.x+player.xv+8,player.y+player.yv+7,p.x,p.y,p.x+p.w,p.y+p.h) then player.x=p.x-8
-			player.xv=0
-			if not player.was_ground
-			and rect_intersect(player.x,player.y+player.yv+2,player.x+9,player.y+player.yv+5,p.x,p.y,p.x+p.w,p.y+p.h)	then player.on_wall=true
-			player.wall_side=-1
+	
+	if is_solid(player.x, player.y + player.yv)
+		or is_solid(player.x + 7, player.y + player.yv) then
+		player.y = (flr((player.y + player.yv + 8) / 8) * 8)
+		player.yv = 0
+	end	
+		
+	for p in all(platforms) do
+		if rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+8,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then
+			if player.x + 8 <= p.x - p.xv then
+				if rect_intersect(player.x+player.xv,player.y+player.yv+1,player.x+player.xv+8,player.y+player.yv+7,p.x,p.y,p.x+p.w,p.y+p.h) then
+					player.x = p.x - 8 --+ p.xv
+					player.xv = 0
+					if not player.was_ground
+						and rect_intersect(player.x,player.y+player.yv+2,player.x+9,player.y+player.yv+5,p.x,p.y,p.x+p.w,p.y+p.h)	then
+						player.on_wall = true
+						player.wall_side = -1
+					end
+				end
+			elseif player.x >= p.x + p.w - p.xv then
+				if rect_intersect(player.x+player.xv,player.y+player.yv+1,player.x+player.xv+8,player.y+player.yv+7,p.x,p.y,p.x+p.w,p.y+p.h) then
+					player.x = p.x + p.w
+					player.xv = 0
+					if not player.was_ground
+						and rect_intersect(player.x-1,player.y+player.yv+2,player.x+7,player.y+player.yv+5,p.x,p.y,p.x+p.w,p.y+p.h) then
+						player.on_wall = true
+						player.wall_side = 1
+					end
+				end
 			end
-			end
-			elseif player.x>=p.x+p.w-p.xv then if rect_intersect(player.x+player.xv,player.y+player.yv+1,player.x+player.xv+8,player.y+player.yv+7,p.x,p.y,p.x+p.w,p.y+p.h) then player.x=p.x+p.w
-			player.xv=0
-			if not player.was_ground
-			and rect_intersect(player.x-1,player.y+player.yv+2,player.x+7,player.y+player.yv+5,p.x,p.y,p.x+p.w,p.y+p.h) then player.on_wall=true
-			player.wall_side=1
-			end
-			end
-			end
-			if player.y+7 < p.y-p.yv then if rect_intersect(player.x+player.xv+1,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then player.y=p.y-8
-			player.yv=0
-			if not player.was_ground then sfx(1)
-			end
-			player.on_ground=true
-			player.on_wall=false
-			player.wall_side=0
-			player.platform=p
-			end
-			elseif player.y>=p.y+p.h-p.yv then if rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then player.y=p.y+p.h+p.yv
-			player.yv=gravity
-			end
+			if player.y + 7 < p.y - p.yv then
+				if rect_intersect(player.x+player.xv+1,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then
+					player.y = p.y - 8
+					player.yv = 0
+					if not player.was_ground then
+						sfx(1)
+					end
+					player.on_ground = true
+					player.on_wall = false
+					player.wall_side = 0
+					player.platform = p
+				end
+			elseif player.y >= p.y + p.h - p.yv then
+				if rect_intersect(player.x+player.xv,player.y+player.yv,player.x+player.xv+7,player.y+player.yv+8,p.x,p.y,p.x+p.w,p.y+p.h) then
+					player.y = p.y + p.h + p.yv
+					player.yv = gravity
+				end
 			end
 		end
 	end
 
-	player.x+=player.xv
-	player.y+=player.yv
-
-	if not player.on_ground then if is_solid(player.x-1,player.y+3)
-			or is_solid(player.x-1,player.y+5) then player.on_wall=true
-			player.wall_side=1
-		elseif is_solid(player.x+8,player.y+3)
-			or is_solid(player.x+8,player.y+5) then player.on_wall=true
-			player.wall_side=-1
+	player.x += player.xv
+	player.y += player.yv
+	
+	if not player.on_ground then
+		if is_solid(player.x - 1, player.y + 3)
+			or is_solid(player.x - 1, player.y + 5) then
+			player.on_wall = true
+			player.wall_side = 1
+		elseif is_solid(player.x + 8, player.y + 3)
+			or is_solid(player.x + 8, player.y + 5) then
+			player.on_wall = true
+			player.wall_side = -1
 		end
 	else
-		player.fly_timer=0
-		player.aircontrol_timer=0
+		player.fly_timer = 0
+		player.aircontrol_timer = 0
 	end
-
- local in_platform=false
-	for p in all(platforms) do if rect_intersect(player.x+2,player.y+2,player.x+6,player.y+6,p.x,p.y,p.x+p.w,p.y+p.h) then in_platform=true
+	
+ local in_platform = false
+	for p in all(platforms) do
+		if rect_intersect(player.x+2,player.y+2,player.x+6,player.y+6,p.x,p.y,p.x+p.w,p.y+p.h) then
+			in_platform = true
 			break
 		end
 	end
-
+	
  if player.y > 127*8
  	or in_platform
 		or is_deadly(player.x,player.y)
  	or is_deadly(player.x+7,player.y)
  	or is_deadly(player.x,player.y+7)
  	or is_deadly(player.x+7,player.y+7)
- 	or is_solid(player.x+4,player.y+4) then kill_player()
+ 	or is_solid(player.x+4, player.y+4) then
+ 	kill_player()
  end
-
- for k,v in pairs(checkpoints) do if k !=current_checkpoint
- 		and hit_checkpoint(v) then current_checkpoint=k
+ 
+ -- see if we hit a checkpoint
+ for k,v in pairs(checkpoints) do
+ 	if k != current_checkpoint
+ 		and hit_checkpoint(v) then
+ 		current_checkpoint = k
  		break
  	end
  end
-
- local cl=mget(player.x/8,player.y/8)
- if cl==255 then game_state=2
- elseif cl>=240 then cl-=239
- 	if l !=cl then l=cl
- 		camera_limit=camera_limits[l]
+ 
+ local cl = mget(player.x/8,player.y/8)
+ if cl == 255 then
+ 	game_state = 2
+ elseif cl >= 240 then
+ 	cl -= 239
+ 	if camera_limit_index != cl then
+ 		camera_limit_index = cl
+ 		camera_limit = camera_limits[camera_limit_index]
  	end
  end
-
- for v in all(coins) do hit_coin(v)
+ 
+ -- see if we got a coin
+ for v in all(coins) do
+ 	hit_coin(v)
  end
-end function animate_player()
-	if player.bubble !=nil then player.frame=8
- elseif player.on_ground then if not player.was_ground then sfx(1)
- 		player.frame=10
- 		if player.platform==nil then add_particle(player.x+2,player.y+7,-0.3,0,7,6+flr(rnd(8)),1.5,0)
+end
+
+
+function animate_player()
+	if player.bubble != nil then
+		player.frame = 8
+ elseif player.on_ground then
+ 	if not player.was_ground then
+ 		-- just landed
+			sfx(1)
+ 		player.frame = 10
+ 		if player.platform == nil then
+ 			add_particle(player.x+2,player.y+7,-0.3,0,7,6+flr(rnd(8)),1.5,0)
  			add_particle(player.x+3,player.y+7,-0.1,-0.01,7,6+flr(rnd(8)),1.5,0)
  			add_particle(player.x+4,player.y+7,0.1,-0.01,7,6+flr(rnd(8)),1.5,0)
 	 		add_particle(player.x+5,player.y+7,0.3,0,7,6+flr(rnd(8)),1.5,0)
  		end
- 	elseif player.frame==10 then player.frame=11
+ 	elseif player.frame == 10 then
+ 		-- second frame after landing
+ 		player.frame = 11
  	else
-
- 		if player.xv !=0 then player.frame_delay-=1
-
- if player.frame_delay<=0 then player.frame_delay=((3-(abs(player.xv)-0.5))*2)
-
- 	player.frame+=1
-
- 	if player.frame>=8 then player.frame=0
- 	end
- end
+ 		-- normal on ground (walk or stand)
+ 		if player.xv != 0 then
+    player.frame_delay -= 1
+    
+    if player.frame_delay <= 0 then
+    	player.frame_delay = ((3 - (abs(player.xv) - 0.5)) * 2)
+    	
+    	player.frame += 1
+    
+    	if player.frame >= 8 then
+    		player.frame = 0
+    	end
+    end
+   else
+   	player.frame_delay = 0
+   	player.frame = 8
+   end
+  end
  else
- 	player.frame_delay=0
- 	player.frame=8
- end
- end
- else
-
- 	if player.yv < 0 then player.frame=9
+ 	-- in air
+ 	if player.yv < 0 then
+ 		player.frame = 9
  	else
- 		player.frame=8
+ 		player.frame = 8
  	end
  end
 end
 -->8
-particles,dust={},{}
-for i=1,8 do add(dust,{x=-rnd(64)-10,y=rnd(128),s=1,sp=2+rnd(2),drift=rnd(0.2)-0.1,o=rnd(1),c=5+rnd(2)})
-end function draw_dust()
-	for p in all(dust) do p.x+=p.sp
+-- particles
+particles = {}
+
+dust = {}
+for i=1,8 do
+	add(dust,{x=-rnd(64)-10,y=rnd(128),s=1,sp=2+rnd(2),drift=rnd(0.2)-0.1,o=rnd(1),c=5+rnd(2)})
+end
+
+function draw_dust()
+	for p in all(dust) do
+		p.x+=p.sp
 		p.y+=sin(p.o)*0.5+p.drift
 		p.o+=0.08
-
-		pset(p.x,p.y,p.c)
-		if rnd(1)>0.7 then pset(p.x+rnd(3)-1,p.y+rnd(3)-1,p.c)
+		
+		-- desenha apenas um ou dois pontinhos simples
+		pset(p.x, p.y, p.c)
+		if rnd(1)>0.7 then
+			pset(p.x+rnd(3)-1, p.y+rnd(3)-1, p.c)
 		end
-
-		if p.x>132 then p.x=-4
+		
+		-- se saiu da tela, reseta
+		if p.x>132 then
+			p.x=-4
 			p.y=rnd(128)
 		end
 	end
-end function is_offscreen(x,y)
-	return (abs(x-player.x-64) > 256
-		or abs(y-player.y-64) > 256)
-end function add_particle(x,y,xv,yv,col,timeout,start_radius,end_radius,draw_type)
-	if is_offscreen(x,y) then return
+end
+
+function is_offscreen(x,y)
+	return (abs(x - player.x - 64) > 256	
+		or abs(y - player.y - 64) > 256)
+end
+
+function add_particle(x,y,xv,yv,col,timeout,start_radius,end_radius,draw_type)
+	if is_offscreen(x,y) then
+		return
 	end
-	p={
-		x=x,y=y,xv=xv,yv=yv,start_radius=start_radius,end_radius=end_radius,col=col,totaltime=timeout,timeout=timeout,update=update_particle_directional
+	p = {
+		x = x,
+		y = y,
+		xv = xv,
+		yv = yv,
+		start_radius = start_radius,
+		end_radius = end_radius,
+		col = col,
+		totaltime = timeout,
+		timeout = timeout,
+		update = update_particle_directional
 	}
-
- if draw_type==nil
- 	or draw_type==0 then p.draw=draw_rect_particle
+ 
+ if draw_type == nil
+ 	or draw_type == 0 then
+  p.draw = draw_rect_particle
  else
- 	p.draw=draw_circ_particle
+ 	p.draw = draw_circ_particle
  end
-
+ 	
 	add(particles,p)
-end function add_particle_spin(x,y,spin_speed,spin_radius,col,timeout,start_radius,end_radius,draw_type)
-	p={}
-	p.x=x
-	p.y=y
-	p.start_x=x
-	p.start_y=y
-	p.sin_val=rnd(1)
-	p.sin_inc=spin_speed
-	p.sin_radius=spin_radius
-	p.start_radius=start_radius
-	p.end_radius=end_radius
-	p.col=col
-	p.totaltime=timeout
-	p.timeout=timeout
+end
 
-	p.update=update_particle_spin
 
- if draw_type==nil
- 	or draw_type==0 then p.draw=draw_rect_particle
+function add_particle_spin(x,y,spin_speed,spin_radius,col,timeout,start_radius,end_radius,draw_type)
+	p = {}
+	p.x = x
+	p.y = y
+	p.start_x = x
+	p.start_y = y
+	p.sin_val = rnd(1)
+	p.sin_inc = spin_speed
+	p.sin_radius = spin_radius
+	p.start_radius = start_radius
+	p.end_radius = end_radius
+	p.col = col
+	p.totaltime = timeout
+	p.timeout = timeout
+
+	p.update = update_particle_spin
+ 
+ if draw_type == nil
+ 	or draw_type == 0 then
+  p.draw = draw_rect_particle
  else
- 	p.draw=draw_circ_particle
+ 	p.draw = draw_circ_particle
  end
-
+ 
 	add(particles,p)
-end function add_particle_burst(x,y,xv,yv,p_count,col,timeout)
-	timeout=ceil(timeout/2)
+end
 
-	for i=0,p_count-1 do add_particle(x,y,sin(i/p_count)*rnd(1)+xv,cos(i/p_count)*rnd(1)+yv,col,timeout+flr(rnd(timeout)),1.5,0,0)
+
+function add_particle_burst(x,y,xv,yv,p_count,col,timeout)
+	timeout = ceil(timeout/2)
+	
+	for i=0,p_count-1 do
+		add_particle(x,y,sin(i/p_count)*rnd(1)+xv,cos(i/p_count)*rnd(1)+yv,col,timeout+flr(rnd(timeout)),1.5,0,0)
 	end
-end function spawn_magic_bubble(col)
-	local p=rnd(1)
-	local xv=sin(p)
-	local yv=cos(p)
+end
+
+
+function spawn_magic_bubble(col)
+	local p = rnd(1)
+	local xv = sin(p)
+	local yv = cos(p)
 	add_particle_spin(940+xv*8,87.5+yv*8,0.01,16,col,8+flr(rnd(4)),1.5,0,1)
-end function update_particle_directional(self)
-	self.timeout-=1
-	if self.timeout<=0 then del(particles,self)
+end
+
+
+------------
+-- update --
+------------
+
+
+function update_particle_directional(self)
+	self.timeout -= 1
+	if self.timeout <= 0 then
+		del(particles, self)
 	else
-		self.x+=self.xv
-		self.y+=self.yv
+		self.x += self.xv
+		self.y += self.yv
 	end
-end function update_particle_spin(self)
-	self.timeout-=1
-	if self.timeout<=0 then del(particles,self)
+end
+
+
+function update_particle_spin(self)
+	self.timeout -= 1
+	if self.timeout <= 0 then
+		del(particles, self)
 	else
-		self.x=self.start_x+sin(self.sin_val)*self.sin_radius
-		self.y=self.start_y+cos(self.sin_val)*self.sin_radius
-
-		self.sin_val+=self.sin_inc
-
-		if self.sin_val>=1 then self.sin_val-=1
-		elseif self.sin_val < 0 then self.sin_val+=1
+		self.x = self.start_x + sin(self.sin_val) * self.sin_radius
+		self.y = self.start_y + cos(self.sin_val) * self.sin_radius
+	
+		self.sin_val += self.sin_inc
+	
+		if self.sin_val >= 1 then
+			self.sin_val -= 1
+		elseif self.sin_val < 0 then
+			self.sin_val += 1
 		end
 	end
-end function draw_rect_particle(p)
-	local r=lerp(p.end_radius,p.start_radius,p.timeout/p.totaltime)
+end
+
+----------
+-- draw --
+----------
+
+
+function draw_rect_particle(p)
+	local r = lerp(p.end_radius,p.start_radius,p.timeout/p.totaltime)
 	rectfill(p.x-r,p.y-r,p.x+r,p.y+r,p.col)
-end function draw_circ_particle(p)
-	local r=lerp(p.end_radius,p.start_radius,p.timeout/p.totaltime)
+end
+
+
+function draw_circ_particle(p)
+	local r = lerp(p.end_radius,p.start_radius,p.timeout/p.totaltime)
 	circfill(p.x,p.y,r,p.col)
 end
 -->8
-triggers,platforms,fireball_shooters,fireballs,bubble_shooters,bubbles,anim_tiles,checkpoints,coins,current_checkpoint={},{},{},{},{},{},{},{},{},-1
+-- map elements
+triggers = {}
+platforms = {}
+fireball_shooters = {}
+fireballs = {}
+bubble_shooters = {}
+bubbles = {}
+anim_tiles = {}
+checkpoints = {}
+coins = {}
+
+current_checkpoint = -1
+
 
 function find_param(x,y)
-	local param=0
-
-	local sp=mget(x,y)
-	if sp>=240 then if sp==253 then param=64
- 	elseif sp==254 then param=96
- 	elseif sp==255 then param=128
+	local param = 0
+	
+	local sp = mget(x,y)
+	if sp >= 240 then		
+ 	if sp == 253 then
+ 		param = 64
+ 	elseif sp == 254 then
+ 		param = 96
+ 	elseif sp == 255 then
+ 		param = 128
  	else
- 		param=(sp-240)*4
+ 		param = (sp-240)*4
  	end
 	else
 		return false,param
 	end
-
+	
  mset(x,y,0)
 	return true,param
-end function find_params(x,y,xv,yv)
-	local found,param1=find_param(x+xv,y+yv)
-	local param2=0
+end
 
-	if found then found,param2=find_param(x+xv*2,y+yv*2)
+
+function find_params(x,y,xv,yv)
+	local found,param1 = find_param(x+xv,y+yv)
+	local param2 = 0
+
+	if found then
+		found,param2 = find_param(x+xv*2,y+yv*2)
 	else
-		param1=64
+		param1 = 64
 	end
-
+	
 	return param1,param2
-end function init_map()
-	for x=0,127 do for y=0,59 do local sp=mget(x,y)
+end
 
-			if sp==32 then local p1,p2=find_params(x,y,1,0)
-			add_shooter(fireball_shooters,add_fireball,x*8,y*8,1,0,p1,p2)
-			elseif sp==33 then local p1,p2=find_params(x,y,0,-1)
-			add_shooter(fireball_shooters,add_fireball,x*8,y*8,0,-1,p1,p2)
-			elseif sp==34 then local p1,p2=find_params(x,y,-1,0)
-			add_shooter(fireball_shooters,add_fireball,x*8,y*8,-1,0,p1,p2)
-			elseif sp==35 then local p1,p2=find_params(x,y,0,1)
-			add_shooter(fireball_shooters,add_fireball,x*8,y*8,0,1,p1,p2)
 
-			elseif sp==48 then local p1,p2=find_params(x,y,1,0)
-			add_shooter(bubble_shooters,add_bubble,x*8,y*8,1,0,p1,p2)
-			elseif sp==49 then local p1,p2=find_params(x,y,0,-1)
-			add_shooter(bubble_shooters,add_bubble,x*8,y*8,0,-1,p1,p2)
-			elseif sp==50 then local p1,p2=find_params(x,y,-1,0)
-			add_shooter(bubble_shooters,add_bubble,x*8,y*8,-1,0,p1,p2)
-			elseif sp==51 then local p1,p2=find_params(x,y,0,1)
-			add_shooter(bubble_shooters,add_bubble,x*8,y*8,0,1,p1,p2)
+function init_map()
+	for x=0,127 do
+		for y=0,59 do
+			local sp = mget(x,y)
 
-			elseif sp==70 then add_checkpoint(x,y)
-			elseif sp==75 then current_checkpoint=add_checkpoint(x,y)
-			player_spawn.x=checkpoints[current_checkpoint].x*8
-			player_spawn.y=checkpoints[current_checkpoint].y*8
+			-- fireball shooters
+			if sp == 32 then
+				-- right
+				local p1,p2 = find_params(x,y,1,0)
+				add_shooter(fireball_shooters,add_fireball,x*8,y*8,1,0,p1,p2)
+			elseif sp == 33 then
+				-- up
+				local p1,p2 = find_params(x,y,0,-1)
+				add_shooter(fireball_shooters,add_fireball,x*8,y*8,0,-1,p1,p2)
+			elseif sp == 34 then
+				-- left
+				local p1,p2 = find_params(x,y,-1,0)
+				add_shooter(fireball_shooters,add_fireball,x*8,y*8,-1,0,p1,p2)
+			elseif sp == 35 then
+				-- down
+				local p1,p2 = find_params(x,y,0,1)
+				add_shooter(fireball_shooters,add_fireball,x*8,y*8,0,1,p1,p2)
 
-			elseif sp==86 then add_coin(x,y)
-			mset(x,y,0)
+			-- bubble shooters
+			elseif sp == 48 then
+				-- right
+				local p1,p2 = find_params(x,y,1,0)
+				add_shooter(bubble_shooters,add_bubble,x*8,y*8,1,0,p1,p2)
+			elseif sp == 49 then
+				-- up
+				local p1,p2 = find_params(x,y,0,-1)
+				add_shooter(bubble_shooters,add_bubble,x*8,y*8,0,-1,p1,p2)
+			elseif sp == 50 then
+				-- left
+				local p1,p2 = find_params(x,y,-1,0)
+				add_shooter(bubble_shooters,add_bubble,x*8,y*8,-1,0,p1,p2)
+			elseif sp == 51 then
+				-- down
+				local p1,p2 = find_params(x,y,0,1)
+				add_shooter(bubble_shooters,add_bubble,x*8,y*8,0,1,p1,p2)
+				
+			-- checkpoints
+			elseif sp == 70 then
+				add_checkpoint(x,y)
+			elseif sp == 75 then
+				current_checkpoint = add_checkpoint(x,y)
+				player_spawn.x = checkpoints[current_checkpoint].x*8
+				player_spawn.y = checkpoints[current_checkpoint].y*8
+			
+			-- coins
+			elseif sp == 86 then
+				add_coin(x,y)
+				mset(x,y,0)
 			end
 		end
 	end
-
-	t=add_trigger(212,248)
+	
+	-- first door
+	t = add_trigger(212,248)
 	t:add_targets({add_platform({216,216},{304,288},sp_plat1x3,{t},false)})
-
+	-- first room exit elevator
 	add_platform({120,120},{264,240},sp_plat3x1,nil,false)
-
+	
+	-- old saw blade platform
+	--add_platform({336,216},{88,88},sp_plat3x1,nil,false)
+	
+	-- platform spike room
 	add_platform({240,240},{176,200},sp_plat2x1,nil,false)
 	add_platform({296,296},{200,176},sp_plat2x1,nil,false)
 	add_platform({356,344,368},{200,200,200},sp_plat2x1,nil,false)
 	add_platform({408,432},{200,200},sp_plat2x1,nil,false)
 	add_platform({432,432},{136,112},sp_plat2x3,nil,false)
-
+	
+	-- squishing platforms
 	add_platform({384,384},{16,64},sp_plat3x1,nil,false)
 	add_platform({384,384},{120,72},sp_plat3x1,nil,false)
-
+	
+	-- l pattern platforms
 	add_platform({496,456,496,496},{64,64,64,104},sp_plat2x1,nil,false)
 	add_platform({560,576,576,576,536},{104,104,64,104,104},sp_plat2x1,nil,false)
 	add_platform({496,536,536,536},{24,24,64,24},sp_plat2x1,nil,false)
-
-	t=add_trigger(424,24)
+	
+	-- platform section exit door
+	t = add_trigger(424,24)
 	t:add_targets({add_platform({368,368},{0,-16},sp_plat1x4,{t},false)})
-
-	t=add_trigger(152,104)
+	
+	-- wall jump platform (end of fireball area)
+	t = add_trigger(152,104)
 	t:add_targets({add_platform({176,176},{48,152},sp_plat1x4,{t},false)})
-
-	t=add_trigger(36,152)
+	
+	-- plat to get over wide spike area
+	t = add_trigger(36,152)
 	t:add_targets({add_platform({32,32},{168,208},sp_plat3x1,{t},false)})
 
-	t=add_trigger(796,280)
+	-- bubble section exit door
+	t = add_trigger(796,280)
 	t:add_targets({add_platform({824,848},{296,296},sp_plat3x1,{t},false)})
-
+	
 	add_platform({936,888,888,984,984},{208,208,304,304,208},sp_plat2x1,nil,false)
 	add_platform({984,984,888,888,984},{256,208,208,304,304},sp_plat2x1,nil,false)
 	add_platform({936,984,984,888,888},{304,304,208,208,304},sp_plat2x1,nil,false)
 	add_platform({888,888,984,984,888},{256,304,304,208,208},sp_plat2x1,nil,false)
-
+	
 	add_platform({768,816},{208,208},sp_plat2x1,nil,false)
 	add_platform({744,696},{208,208},sp_plat2x1,nil,false)
 	add_platform({632,632},{152,200},sp_plat3x1,nil,false)
 	add_platform({632,632},{144,96},sp_plat3x1,nil,false)
+	
+	--add_platform({616,616,616},{464,432,400},sp_plat3x1,nil,false)
+	--add_platform({664,664},{464,400},sp_plat3x1,nil,false)
+	
+	--t = add_trigger(384,216)
+	--t:add_targets({add_platform({368,368,368},{192,80,192},sp_plat1x4,{t},false)})
 
-end function add_platform(nodesx,nodesy,sp,ts,multi_trigger)
-	plat={
-		x=nodesx[1],y=nodesy[1],xv=0,yv=0,w=sp[1].w,h=sp[1].h,nodesx=nodesx,nodesy=nodesy,nodeslen=#nodesx,dest=2,sp=sp,frame=1,triggers=ts,dir=1,active=false,multi_trigger=multi_trigger,wait_target=true
+	--t1 = add_trigger(440,48)
+	--t2 = add_trigger(544,48)
+	--p1 = add_platform({472,472},{16,32},sp_plat1x3,{t1,t2},true)
+	--p2 = add_platform({512,512},{16,32},sp_plat1x3,{t1,t2},true)
+	--p3 = add_platform({488,488},{80,64},sp_plat2x3,{t1,t2},true)
+	--t1:add_targets({p1,p2,p3})
+	--t2:add_targets({p1,p2,p3})
+end
+
+
+------------------------
+-- platforms/triggers --
+------------------------
+
+
+function add_platform(nodesx,nodesy,sp,ts,multi_trigger)
+	plat = {
+		x = nodesx[1],
+		y = nodesy[1],
+		xv = 0,
+		yv = 0,
+		w = sp[1].w,
+		h = sp[1].h,
+		nodesx = nodesx,
+		nodesy = nodesy,
+		nodeslen = #nodesx,
+		dest = 2,
+		sp = sp,
+		frame = 1,
+		triggers = ts,
+		dir = 1,
+		active = false,
+		multi_trigger = multi_trigger,
+		wait_target = true
 	}
-	if ts==nil then plat.active=true
+	if ts == nil then
+		plat.active = true
 	end
-
-	plat.activate=function(self)
-		local triggered=true
-		if self.triggers !=nil
-			and self.multi_trigger then for t in all(self.triggers) do if t.on==0 then triggered=false
-			break
-			end
+	
+	plat.activate = function(self)
+		local triggered = true 
+		if self.triggers != nil
+			and self.multi_trigger then
+			for t in all(self.triggers) do
+				if t.on == 0 then
+					triggered = false
+					break
+				end
 			end
 		end
-
-		if triggered then self.active=true
+		
+		if triggered then
+			self.active = true
 		end
 	end
-
+	
 	add(platforms,plat)
-
+	
 	return plat
-end function add_trigger(x,y)
-	t={
-		x=x,y=y,sp=sp_trigger,frame=1,active=false,on=0,targets={},wait_target_count=0,wait_target=false
+end
+
+
+function add_trigger(x,y)
+	t = {
+		x = x,
+		y = y,
+		sp = sp_trigger,
+		frame = 1,
+		active = false,
+		on = 0,
+		targets = {},
+		wait_target_count = 0,
+		wait_target = false
 	}
-	t.activate=function(self)
-		local targets=self.targets
-		self.on=self.wait_target_count
-		self.active=true
-		self.frame=2
-		for t in all(self.targets) do if not t.active then t:activate()
+	t.activate = function(self)
+		local targets = self.targets
+		self.on = self.wait_target_count
+		self.active = true
+		self.frame = 2
+		for t in all(self.targets) do
+			if not t.active then
+				t:activate()
 			end
 		end
 	end
-	t.add_targets=function(self,targets)
-		for a in all(targets) do add(self.targets,a)
-			if a.wait_target then self.wait_target_count+=1
+	t.add_targets = function(self,targets)
+		for a in all(targets) do
+			add(self.targets,a)
+			if a.wait_target then
+				self.wait_target_count += 1
 			end
 		end
 	end
 	add(triggers,t)
 	return t
-end function update_platform(a)
-	if not a.active then a.xv=0
-		a.yv=0
+end
+
+
+
+
+function update_platform(a)
+	if not a.active then
+		a.xv = 0
+		a.yv = 0
 		return
 	end
-
-	local xd=a.x-a.nodesx[a.dest]
-	local yd=a.y-a.nodesy[a.dest]
-	local len=distance(xd,yd,0,0)
-	local xnorm=xd/len
-	local ynorm=yd/len
-	local continue=true
-
-	if len==0
-
+	
+	local xd = a.x - a.nodesx[a.dest]
+	local yd = a.y - a.nodesy[a.dest]
+	local len = distance(xd,yd,0,0)
+	local xnorm = xd/len
+	local ynorm = yd/len	
+	local continue = true
+		
+	if len == 0
+		-- these 4 lines are required
+		-- for diagonal movement
 		or (a.x < a.nodesx[a.dest]-xnorm
 		and a.x > a.nodesx[a.dest]+xnorm
 		and a.y < a.nodesy[a.dest]-ynorm
-		and a.y > a.nodesy[a.dest]+ynorm) then a.dest+=a.dir
-
-		if a.dir > 0 then if a.dest > a.nodeslen then if a.triggers==nil then a.dest=1
-			else
-			a.dest=a.nodeslen-1
-			a.dir=-1
-			a.active=false
-			sfx(6)
-			continue=false
-
-			end
+		and a.y > a.nodesy[a.dest]+ynorm) then
+		
+		--a.xv = a.nodesx[a.dest]-a.x
+		--a.yv = a.nodesy[a.dest]-a.y
+		
+		--a.x = a.nodesx[a.dest]
+		--a.y = a.nodesy[a.dest]
+		
+		a.dest += a.dir
+		
+		if a.dir > 0 then
+			if a.dest > a.nodeslen then
+				if a.triggers == nil then
+					a.dest = 1
+				else
+					a.dest = a.nodeslen-1
+					a.dir = -1
+					a.active = false
+					sfx(6)
+					continue = false
+					--commented out: reactivatable platforms
+					--for t in all(a.triggers) do
+					--	t.on -= 1
+					--	if t.on == 0 then
+					--		t.active = false
+					--		t.frame = 1
+					--		sfx(6)
+					--	end
+					--end
+				end
 			end
 		else
-			if a.dest < 1 then if a.triggers==nil then a.dest=a.nodeslen
-			else
-			a.dest=2
-			a.dir=1
-			a.active=false
-			sfx(6)
-			continue=false
-
-			end
+			if a.dest < 1 then
+				if a.triggers == nil then
+					a.dest = a.nodeslen
+				else
+					a.dest = 2
+					a.dir = 1
+					a.active = false
+					sfx(6)
+					continue = false
+					--for t in all(a.triggers) do
+					--	t.on -= 1
+					--	if t.on == 0 then
+					--		t.active = false
+					--		t.frame = 1
+					--		sfx(6)
+					--	end
+					--end
+				end
 			end
 		end
 	end
-
-	if continue then xd=a.x-a.nodesx[a.dest]
- 	yd=a.y-a.nodesy[a.dest]
- 	len=distance(xd,yd,0,0)
- 	xnorm=xd/len
- 	ynorm=yd/len
-		a.x-=xnorm
-		a.y-=ynorm
-		a.xv=-xnorm
-		a.yv=-ynorm
+	
+	if continue then
+ 	xd = a.x - a.nodesx[a.dest]
+ 	yd = a.y - a.nodesy[a.dest]
+ 	len = distance(xd,yd,0,0)
+ 	xnorm = xd/len
+ 	ynorm = yd/len
+		a.x -= xnorm
+		a.y -= ynorm
+		a.xv = -xnorm
+		a.yv = -ynorm
 	else
-		a.xv=0
-		a.yv=0
+		a.xv = 0
+		a.yv = 0
 	end
+	
+end
 
-end function add_shooter(list,spawn,x,y,fxv,fyv,fire_rate,start_delay)
-	local s={
-		x=x,y=y,fxv=fxv,fyv=fyv,fire_rate=fire_rate,timer=start_delay,active=true
+
+---------------
+-- fireballs --
+---------------
+
+
+function add_shooter(list,spawn,x,y,fxv,fyv,fire_rate,start_delay)
+	local s = {
+		x = x,
+		y = y,
+		fxv = fxv,
+		fyv = fyv,
+		fire_rate = fire_rate,
+		timer = start_delay,
+		active = true
 	}
-	s.fire=function(self)
-		if not is_offscreen(self.x,self.y) then spawn(self.x+self.fxv*8,self.y+self.fyv*8,self.fxv,self.fyv)
+	s.fire = function(self)
+		if not is_offscreen(self.x,self.y) then
+			spawn(self.x+self.fxv*8,self.y+self.fyv*8,self.fxv,self.fyv)
 		end
 	end
 	add(list,s)
 	return s
-end function add_fireball(x,y,xv,yv)
-	f={
-		x=x,y=y,xv=xv,yv=yv,sp=sp_fire_r,frame=1,frame_count=#sp_fire_r,timer=360
+end
+
+
+function add_fireball(x,y,xv,yv)
+	f = {
+		x = x,
+		y = y,
+		xv = xv,
+		yv = yv,
+		sp = sp_fire_r,
+		frame = 1,
+		frame_count = #sp_fire_r,
+		timer = 360
 	}
-	if (xv < 0) then f.sp=sp_fire_l
-	elseif (xv > 0) then f.sp=sp_fire_r
-	elseif (yv < 0) then f.sp=sp_fire_u
-	elseif (yv > 0) then f.sp=sp_fire_d
+	if (xv < 0) then
+		f.sp = sp_fire_l
+	elseif (xv > 0) then
+		f.sp = sp_fire_r
+	elseif (yv < 0) then
+		f.sp = sp_fire_u
+	elseif (yv > 0) then
+		f.sp = sp_fire_d
 	end
-
+	
 	add(fireballs,f)
-
+	
 	return f
-end function update_shooter(s)
-	if s.active then s.timer-=1
-		if s.timer<=0 then s:fire()
-			s.timer=s.fire_rate
+end
+
+
+function update_shooter(s)
+	if s.active then
+		s.timer -= 1
+		if s.timer <= 0 then
+			s:fire()
+			s.timer = s.fire_rate
 		end
 	end
-end function hits_platform(x,y,r)
-	for p in all(platforms) do if rect_circ_intersect(x,y,r,p.x,p.y,p.x+p.w,p.y+p.h) then return true
+end
+
+
+function hits_platform(x,y,r)
+	for p in all(platforms) do
+		if rect_circ_intersect(x,y,r,p.x,p.y,p.x+p.w,p.y+p.h) then
+			return true
 		end
 	end
 	return false
-end function fire_burst(x,y,xv,yv)
+end
+
+function fire_burst(x,y,xv,yv)
 	add_particle_burst(x,y,-xv/2,-yv/2,5,8,8)
 	add_particle_burst(x,y,-xv/2,-yv/2,5,9,8)
-end function update_fireball(f)
-	f.timer-=1
+end
 
-	if f.timer<=0 then del(fireballs,f)
+function update_fireball(f)
+	f.timer -= 1
+	
+	if f.timer <= 0 then
+		del(fireballs,f)
 		return
 	end
-
-	local dead=false
-	f.x+=f.xv
-	f.y+=f.yv
-
+	
+	local dead = false
+	f.x += f.xv
+	f.y += f.yv
+	
 	if is_solid(f.x+3+f.xv,f.y+3+f.yv)
-		or hits_platform(f.x+3+f.xv,f.y+3+f.yv,3) then dead=true
+		or hits_platform(f.x+3+f.xv,f.y+3+f.yv,3) then
+		dead = true
 	end
-
-	if dead then del(fireballs,f)
+	
+	if dead then
+		del(fireballs,f)
 		fire_burst(f.x+3,f.y+3,f.xv,f.yv)
 		return
 	end
-
-	f.frame+=1
-
-	if f.frame > f.frame_count then f.frame=1
+	
+	f.frame += 1
+	
+	if f.frame > f.frame_count then
+		f.frame = 1
 	end
-
-	if f.timer%6==0 then add_particle(f.x+2+rnd(4),f.y+2+rnd(4),0,0,8,10,1.5,0)
+	
+	if f.timer%6 == 0 then
+		add_particle(f.x+2+rnd(4),f.y+2+rnd(4),0,0,8,10,1.5,0)
 	end
-
-	if r<=0
-		and rect_circ_intersect(f.x+3,f.y+3,3,player.x,player.y,player.x+7,player.y+7) then kill_player()
+	
+	if respawn_timer <= 0
+		and rect_circ_intersect(f.x+3,f.y+3,3,player.x,player.y,player.x+7,player.y+7) then
+		kill_player()
 	end
-end function add_bubble(x,y,xv,yv)
-	b={
-		x=x,y=y,xv=xv,yv=yv,sp=sp_bubble,frame=1,frame_count=#sp_bubble,timer=360
+end
+
+
+-------------
+-- bubbles --
+-------------
+
+
+function add_bubble(x,y,xv,yv)
+	b = {
+		x = x,
+		y = y,
+		xv = xv,
+		yv = yv,
+		sp = sp_bubble,
+		frame = 1,
+		frame_count = #sp_bubble,
+		timer = 360
 	}
 	add(bubbles,b)
-
+	
 	return b
-end function update_bubble(b)
-	local dead=false
-	b.x+=b.xv
-	b.y+=b.yv
-	b.timer-=1
+end
 
-	if b.timer<=0 then dead=true
+
+function update_bubble(b)
+	local dead = false
+	b.x += b.xv
+	b.y += b.yv
+	b.timer -= 1
+	
+	if b.timer <= 0 then
+		dead = true
 	end
-
-	if not dead then if is_solid(b.x+3+b.xv*4,b.y+3+b.yv*4)
+	
+	if not dead then
+		if is_solid(b.x+3+b.xv*4,b.y+3+b.yv*4) 
 			or is_deadly(b.x+3+b.xv*2,b.y+3+b.yv*2)
-			or hits_platform(b.x+3+b.xv,b.y+3+b.yv,6) then dead=true
+			or hits_platform(b.x+3+b.xv,b.y+3+b.yv,6) then
+			dead = true
 		end
-
-		for f in all(fireballs) do if not (abs(f.x-b.x) > 9
- 		or abs(f.y-b.y) > 9) then if distance(b.x+3,b.y+3,f.x+3,f.y+3) < 9 then dead=true
+		
+		for f in all(fireballs) do
+			if not (abs(f.x - b.x) > 9
+  		or abs(f.y - b.y) > 9) then
+ 			if distance(b.x+3,b.y+3,f.x+3,f.y+3) < 9 then
+ 				dead = true
  				del(fireballs,f)
  				fire_burst(f.x+3,f.y+3,f.xv,f.yv)
  				break
@@ -1133,156 +1787,229 @@ end function update_bubble(b)
  		end
 		end
 	end
-
-	if dead then if player.bubble==b then player.bubble=nil
+	
+	if dead then
+		if player.bubble == b then
+			player.bubble = nil
 		end
 		del(bubbles,b)
-		local p_count=10
-		for i=0,p_count-1 do local xv=sin((i+rnd(1)*0.5)/p_count)
-			local yv=cos((i+rnd(1)*0.5)/p_count)
+		local p_count = 10
+		for i=0,p_count-1 do
+			local xv = sin((i+rnd(1)*0.5)/p_count)
+			local yv = cos((i+rnd(1)*0.5)/p_count)
 			add_particle(b.x+3+xv*5,b.y+3+yv*5,xv*0.5,yv*0.5,12,2+flr(rnd(4)),1.5,0)
 		end
 		return
 	end
-
-	b.frame+=1
-
-	if b.frame > b.frame_count then b.frame=1
+	
+	b.frame += 1
+	
+	if b.frame > b.frame_count then
+		b.frame = 1
 	end
-
-	if b.timer%10==5 then add_particle(b.x+3+rnd(2)-b.xv*5,b.y+3+rnd(2)-b.yv*5,0,0,12,20,3,0,1)
+	
+	if b.timer%10 == 5 then
+		add_particle(b.x+3+rnd(2)-b.xv*5,b.y+3+rnd(2)-b.yv*5,0,0,12,20,3,0,1)
 	end
-
-	if r<=0
-		and player.no_bubble_timer<=0
-		and player.bubble !=b
-		and rect_circ_intersect(b.x+3,b.y+3,4,player.x,player.y,player.x+7,player.y+7) then player.bubble=b
-		player.platform=nil
-		player.x=b.x
-		player.y=b.y
-		player.xv=0
-		player.yv=0
-		player.on_ground=false
-		player.on_wall=false
-
+	
+	if respawn_timer <= 0
+		and player.no_bubble_timer <= 0
+		and player.bubble != b
+		and rect_circ_intersect(b.x+3,b.y+3,4,player.x,player.y,player.x+7,player.y+7) then
+		player.bubble = b
+		player.platform = nil
+		player.x = b.x
+		player.y = b.y
+		player.xv = 0
+		player.yv = 0
+		player.on_ground = false
+		player.on_wall = false
+		--player.fly_timer = 0
+		--player.aircontrol_timer = 0
 		sfx(8)
 	end
-end function add_anim_tile(x,y,frames,play_once)
-	a={
-		x=x,y=y,frames=frames,frame=1,frame_count=#frames,play_once=play_once,}
+end
+
+
+----------------
+-- anim tiles --
+----------------
+
+
+function add_anim_tile(x,y,frames,play_once)
+	a = {
+		x = x,
+		y = y,
+		frames = frames,
+		frame = 1,
+		frame_count = #frames,
+		play_once = play_once,
+	}
 	add(anim_tiles,a)
-end function update_anim_tile(a)
-	a.frame+=1
-	if a.frame > a.frame_count then a.frame=1
-		if a.play_once then a.frame=a.frame_count
+end
+
+
+function update_anim_tile(a)
+	a.frame += 1
+	if a.frame > a.frame_count then
+		a.frame = 1
+		if a.play_once then
+			a.frame = a.frame_count
 			del(anim_tiles,a)
 		end
 	end
 	mset(a.x,a.y,a.frames[a.frame])
-end function add_checkpoint(x,y)
-	local c={
-		x=x,y=y-1
+end
+
+
+-----------------
+-- checkpoints --
+-----------------
+
+
+function add_checkpoint(x,y)
+	c = {
+		x=x,
+		y=y-1
 	}
-
+	
 	add(checkpoints,c)
-
+	
 	return #checkpoints
-end function checkpoint_frames()
+end
+
+
+function checkpoint_frames()
 	local f={}
-	for j=1,2 do for i=70,79 do add(f,i) end
+	for j=1,2 do
+		for i=70,79 do add(f,i) end
 	end
-	for i=70,79 do add(f,i)
+	for i=70,79 do
+		add(f,i)
 		add(f,i)
 	end
 	local h={3,4,5,6,6,1}
-	for i=1,6 do for j=1,h[i] do add(f,69+i) end
+	for i=1,6 do
+		for j=1,h[i] do add(f,69+i) end
 	end
 	return f
-end function hit_checkpoint(c)
-	local x=c.x*8
-	local y=c.y*8
-	if rect_intersect(player.x,player.y,player.x+7,player.y+7,x,y,x+8,y+8) then add_anim_tile(c.x,c.y+1,checkpoint_frames(),true)
-		player_spawn.x=x
-		player_spawn.y=y
+end
+
+
+function hit_checkpoint(c)
+	local x = c.x * 8
+	local y = c.y * 8
+	if rect_intersect(player.x,player.y,player.x+7,player.y+7,x,y,x+8,y+8) then
+		add_anim_tile(c.x,c.y+1,checkpoint_frames(),true)
+		player_spawn.x = x
+		player_spawn.y = y
 		sfx(5)
 		set_message("checkpoint")
-		if current_checkpoint !=-1 then add_anim_tile(checkpoints[current_checkpoint].x,checkpoints[current_checkpoint].y+1,{76,76,77,77,78,78,79,79,70},true)
+		if current_checkpoint != -1 then
+			add_anim_tile(checkpoints[current_checkpoint].x,checkpoints[current_checkpoint].y+1,{76,76,77,77,78,78,79,79,70},true)
 		end
 		return true
 	end
 	return false
-end function add_coin(x,y)
-	local c={
- 	x=x*8,y=y*8,sp=sp_coin1,frame=1,frame_count=#sp_coin1
+end
+
+
+-----------
+-- coins --
+-----------
+
+
+function add_coin(x,y)
+	c = {
+ 	x = x*8,
+ 	y = y*8,
+ 	sp = sp_coin1,
+ 	frame = 1,
+		frame_count = #sp_coin1
 	}
 	add(coins,c)
-end function hit_coin(c)
-	if rect_intersect(player.x,player.y,player.x+7,player.y+7,c.x,c.y,c.x+8,c.y+8) then sfx(4)
+end
+
+
+function hit_coin(c)
+	if rect_intersect(player.x,player.y,player.x+7,player.y+7,c.x,c.y,c.x+8,c.y+8) then
+		sfx(4)
 		del(coins,c)
-		g=30
-		player.xv=0
-		player.yv=0
- 	for x=0,15 do add_particle(player.x+4,player.y+4,sin(x/15),cos(x/15),10,20+flr(rnd(10)),1.5,0,1)
+		got_coin_timer = 30
+		player.xv = 0
+		player.yv = 0
+ 	for x=0,15 do
+		set_message("you got a coin")
+ 		add_particle(player.x+4,player.y+4,sin(x/15),cos(x/15),10,20+flr(rnd(10)),1.5,0,1)
  	end
 		return true
 	end
 	return false
-end function update_coin(c)
-	c.frame+=1
-	if c.frame > c.frame_count then c.frame=1
+end
+
+
+function update_coin(c)
+	c.frame += 1
+	if c.frame > c.frame_count then
+		c.frame = 1
 	end
 end
 -->8
-fragments={}
+-- end game
+fragments = {}
 
 function new_fragment(angle,sp,flipx,flipy,dest_x,dest_y)
-	f={}
-	f.x=937
-	f.y=48
-	f.radius=0
-	f.angle=angle
-	f.sp=sp
-	f.frame=5
-	f.flipx=flipx
-	f.flipy=flipy
-	f.timer=4
-	f.nodes_x={937,937,dest_x,dest_x}
-	f.nodes_y={56,56,dest_y,dest_y}
-	f.nodes_r={0,32,32,0}
-	f.nodes_t={0,14,84,145}
-	f.node_i=1
-	f.update=function(self)
-		local i=self.node_i
-		if i<=3 then self.frame+=1
-
- 	if self.frame > #sp_coin1 then self.frame=1
- 	end
-
+	f = {}
+	f.x = 937
+	f.y = 48
+	f.radius = 0
+	f.angle = angle
+	f.sp = sp
+	f.frame = 5
+	f.flipx = flipx
+	f.flipy = flipy
+	f.timer = 4
+	f.nodes_x = {937,937,dest_x,dest_x}
+	f.nodes_y = {56,56,dest_y,dest_y}
+	f.nodes_r = {0,32,32,0}
+	f.nodes_t = {0,14,84,145}
+	f.node_i = 1
+	f.update = function(self)
+		local i = self.node_i
+		if i <= 3 then
+ 		self.frame += 1
+	
+  	if self.frame > #sp_coin1 then
+  		self.frame = 1
+  	end
+ 		
  		add_particle(self.x+3,self.y+3,0,0,9,10,2,0,1)
-
- 		self.angle+=0.01
- 		if self.angle>=1 then self.angle-=1
+ 		
+ 		self.angle += 0.01
+ 		if self.angle >= 1 then
+ 			self.angle -= 1
  		end
-
-			local y=i+1
- 		local t=(self.timer-self.nodes_t[i])/(self.nodes_t[y]-self.nodes_t[i])
- 		self.r=smooth_lerp(self.nodes_r[i],self.nodes_r[y],t)
- 		self.x=lerp(self.nodes_x[i],self.nodes_x[y],t)+sin(self.angle)*self.r
- 		self.y=lerp(self.nodes_y[i],self.nodes_y[y],t)+cos(self.angle)*self.r
-
-			self.timer+=1
- 		if self.timer==self.nodes_t[y] then self.node_i+=1
+			
+			local y = i+1
+ 		local t = (self.timer-self.nodes_t[i])/(self.nodes_t[y]-self.nodes_t[i])
+ 		self.r = smooth_lerp(self.nodes_r[i],self.nodes_r[y],t)
+ 		self.x = lerp(self.nodes_x[i],self.nodes_x[y],t) + sin(self.angle) * self.r
+ 		self.y = lerp(self.nodes_y[i],self.nodes_y[y],t) + cos(self.angle) * self.r
+			
+			self.timer += 1
+ 		if self.timer == self.nodes_t[y] then
+ 			self.node_i += 1
  		end
 		else
-			self.x=self.nodes_x[3]
-			self.y=self.nodes_y[3]
+			self.x = self.nodes_x[3]
+			self.y = self.nodes_y[3]
 		end
 	end
-
-	f.draw=function(self)
+		
+	f.draw = function(self)
 		draw_sprite(self.sp[self.frame],self.x,self.y,self.flipx,self.flipy)
 	end
-
+	
 	add(fragments,f)
 end
 __gfx__
@@ -1584,15 +2311,6 @@ __sfx__
 0001000002311033210432106321080310a7310c0310e741100411374115041197411c7412074123731277212a721013000130002300023000130001300013000130001300013000000000000000000000000000
 00020000033200562002610016100e600106001160011600136001360015600156001560015600156001560015600000000000000000000000000000000000000000000000000000000000000000000000000000
 000200003263001220085302065019620196101961000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0002000016630276701b6600d6501a64011640176300d63011620176200f620076200a610056100b610076100361006610026100161003402034020340203405047000470004700004020040200402004050b700
-0008000018050240601f0502b060240502b050300602b050300703003030020300203001030010300150000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000800001d755187551c7551d7501d7301d7201d71500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00010000017760126602776026320c222016220a01201612080120501204012020120201504002030020200200302003020000000000000000000000000000000000000000000000000000000000000000000000
-00060000376243b6313a62137621356113461132611306152e6002d60000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-010200001d51121521167150971107711067110571104711047110000000000000002170003700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00010000320110a7212c0210e731270311374121041197511d0512074123731277212a7212e713317132151321513205131f5131d5131b517185171651713717117170f7170d7170c7170b710000000000000000
-001000002204102551260510655129051095512c0410b5512f0310e551330311155137021155513a021175513d0111b5513f0111d5513f011215513f011245413f011275313f0112a5213f0112d5113f01130515
-010800002b05030070300403003030020300103001030015000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0002000016630276701b6600d6501a64011640176300d63011620176200f620076200a610056100b610076100361006610026100161003402034020340203405047000470004700004020040200402004050b700
 0008000018050240601f0502b060240502b050300602b050300703003030020300203001030010300150000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000800001d755187551c7551d7501d7301d7201d71500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

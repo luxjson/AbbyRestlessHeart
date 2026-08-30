@@ -33,7 +33,7 @@ end function btn_player(btn_id,pidx)
 	if m then if pidx==1 then return btn(btn_id,1) else return btn(btn_id,0) end
 	end
 
-	result=false
+	local result=false
 	if c !=2 then result=result or btn(btn_id,0) end
 	if c !=1 then result=result or btn(btn_id,1) end
 	return result
@@ -281,7 +281,7 @@ end function _draw()
 	if game_state==2 then if end_timer > 200 then print("victory!",48,28,10)
  		local secs_str=sub("0"..seconds,-2)
  		local mins_str=sub("0"..minutes,-2)
- 		local s="time: "..hours..":"..mins_str..":"..secs_str.."."..flr(100/frames)
+ 		local s="time: "..hours..":"..mins_str..":"..secs_str.."."..flr(frames*100/30)
  		local x=64-(#s*4)/2
  		print(s,x,46,6)
  		s="death toll: "..deaths
@@ -435,6 +435,8 @@ end function init_player()
 	camera_pos.y=player.y-64
 	jump_pressed_by_player={false,false}
 	jump_pressed=false
+	end_timer=0
+	end_frame=1
 end function select_player(pidx)
 	a=pidx
 	player=players[pidx]
@@ -694,7 +696,7 @@ end function move_player()
  	end
  end
 
- local cl=mget(player.x/8,player.y/8)
+ local cl=mget(flr(player.x/8),flr(player.y/8))
  if cl==255 then game_state=2
  elseif cl>=240 then cl-=239
  	if l !=cl then l=cl
@@ -1217,7 +1219,7 @@ end function add_coin(x,y)
 	}
 	add(coins,c)
 end function hit_coin(c)
-	if rect_intersect(player.x,player.y,player.x+7,player.y+7,c.x,c.y,c.x+8,c.y+8) then sfx(4)
+	if r<=0 and rect_intersect(player.x,player.y,player.x+7,player.y+7,c.x,c.y,c.x+8,c.y+8) then sfx(4)
 		del(coins,c)
 		g=30
 		player.xv=0
