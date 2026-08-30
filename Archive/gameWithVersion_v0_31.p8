@@ -241,7 +241,7 @@ end function _draw()
 		print("credits",50,94,s3)
 		print("controls",48,102,s4)
 		print("⬆️⬇️❎",54,114,6)
-		print("v0.31",2,122,5)
+		print("v1.0.0",2,122,5)
 		return
 	end
 	camera(camera_pos.x,camera_pos.y)
